@@ -56,7 +56,10 @@ jobs:
             --task-definition $ECS_TASK_DEFINITION \
             --query 'taskDefinition' > task-definition.json
 
-      # Step 6: Render new task definition with updated image
+          echo "Original task definition:"
+          cat task-definition.json
+
+      # Step 6: Fill in the new image ID in the task definition
       - name: Fill in the new image ID in the task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
@@ -65,11 +68,12 @@ jobs:
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
-      # Step 7: Register new task definition (with cleanup)
+      # Step 7: Clean and register new task definition
       - name: Register task definition
         id: register-task-def
         run: |
-          CLEANED_TASK_DEF=$(cat ${{ steps.task-def.outputs.task-definition }} | jq 'del(
+          # Clean the task definition by removing read-only fields
+          cat ${{ steps.task-def.outputs.task-definition }} | jq 'del(
             .compatibilities,
             .taskDefinitionArn,
             .requiresAttributes,
@@ -78,19 +82,24 @@ jobs:
             .registeredAt,
             .registeredBy,
             .enableFaultInjection
-          )')
+          )' > cleaned-task-def.json
 
-          TASK_DEF_ARN=$(echo $CLEANED_TASK_DEF | aws ecs register-task-definition \
-            --cli-input-json file:///dev/stdin \
+          echo "Cleaned task definition:"
+          cat cleaned-task-def.json
+
+          # Register the cleaned task definition
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://cleaned-task-def.json \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
 
           echo "task-definition-arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
-          echo "Registered task definition: $TASK_DEF_ARN"
+          echo "✅ Registered task definition: $TASK_DEF_ARN"
 
       # Step 8: Update ECS service
       - name: Update ECS service
         run: |
+          echo "Updating service ${{ env.ECS_SERVICE }} in cluster ${{ env.ECS_CLUSTER }}"
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
@@ -100,13 +109,17 @@ jobs:
       # Step 9: Wait for service stability
       - name: Wait for service stability
         run: |
+          echo "Waiting for service to become stable..."
           aws ecs wait services-stable \
             --cluster ${{ env.ECS_CLUSTER }} \
             --services ${{ env.ECS_SERVICE }}
+          echo "✅ Service is stable!"
 
       # Step 10: Deployment successful
       - name: Deployment successful
         run: |
-          echo "Deployment completed successfully!"
+          echo "🎉 Deployment completed successfully!"
           echo "Image: ${{ steps.build-image.outputs.image }}"
           echo "Task Definition: ${{ steps.register-task-def.outputs.task-definition-arn }}"
+          echo "Service: ${{ env.ECS_SERVICE }}"
+          echo "Cluster: ${{ env.ECS_CLUSTER }}"
