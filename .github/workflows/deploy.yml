@@ -63,12 +63,18 @@ jobs:
             --task-definition $ECS_TASK_DEFINITION \
             --query taskDefinition > task-definition.json
 
+      # 🧹 Step 5.1: Clean invalid ECS keys
+      - name: Clean task definition JSON
+        run: |
+          # Remove the invalid "enableFaultInjection" field
+          jq 'del(.containerDefinitions[].enableFaultInjection)' task-definition.json > cleaned-task-definition.json
+
       # Step 6: Update task definition with new image
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: task-definition.json
+          task-definition: cleaned-task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
