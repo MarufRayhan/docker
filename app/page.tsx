@@ -10,7 +10,7 @@ export default function Home() {
       }}
     >
       <h1>👋 Hello, Next.js!!</h1>
-      <p>Welcome to your docker practice project</p>
+      <p>Welcome to your docker ci/cd project</p>
     </div>
   );
 }
